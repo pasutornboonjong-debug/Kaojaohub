@@ -205,7 +205,10 @@ do
         { "ลบค่าที่จำไว้แล้ว", "Remembered settings deleted" },
         { "บันทึกไม่สำเร็จ", "Save failed" },
         { "กรุณาเปิดระบบมุดดินก่อน", "Enable burrow first" },
-        { "ภาษา (Language)", "Language" }
+        { "ภาษา (Language)", "Language" },
+        { "ปุ่มเปิด/ปิดเมนู", "Menu toggle button" },
+        { "แสดงปุ่มเมนูลอยบนหน้าจอ", "Show floating menu button" },
+        { "กดเพื่อซ่อน/แสดงหน้าต่างสคริปต์ ใช้บนมือถือได้ (ไม่ต้องใช้ RightControl) ลากย้ายตำแหน่งได้", "Tap to hide/show the script window. Works on mobile (no RightControl needed); drag to move it" }
     }
 
     local function escPattern(text)
@@ -2705,6 +2708,99 @@ pcall(function()
 end)
 
 
+
+-- ========== ปุ่มเมนูลอย (ซ่อน/แสดงหน้าต่างบนมือถือ โดยไม่ต้องใช้ RightControl) ==========
+do
+    local UserInputService = game:GetService("UserInputService")
+    local menuGui, menuBtn
+
+    local function toggleWindow()
+        local ok = pcall(function() Window:Minimize() end)
+        if not ok then
+            pcall(function()
+                local r = Window.Root
+                r.Visible = not r.Visible
+            end)
+        end
+    end
+
+    local okMenu = pcall(function()
+        menuGui = Instance.new("ScreenGui")
+        menuGui.Name = "IMS_MenuButton"
+        menuGui.ResetOnSpawn = false
+        menuGui.DisplayOrder = 100
+        menuGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+        menuBtn = Instance.new("TextButton")
+        menuBtn.Size = UDim2.fromOffset(52, 52)
+        menuBtn.Position = UDim2.new(0, 12, 0.35, 0)
+        menuBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+        menuBtn.BackgroundTransparency = 0.1
+        menuBtn.TextColor3 = Color3.new(1, 1, 1)
+        menuBtn.Font = Enum.Font.GothamBold
+        menuBtn.TextSize = 15
+        menuBtn.Text = "IMS"
+        menuBtn.AutoButtonColor = true
+        menuBtn.Active = true
+        menuBtn.Parent = menuGui
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(1, 0)
+        corner.Parent = menuBtn
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(120, 170, 255)
+        stroke.Thickness = 2
+        stroke.Parent = menuBtn
+
+        -- ลากย้ายได้ ถ้าขยับเกิน 8px ถือว่าลาก ไม่ใช่การกด (กันซ่อนหน้าต่างโดยไม่ตั้งใจ)
+        local dragging, moved, dragStart, startPos = false, false, nil, nil
+        menuBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                dragging, moved = true, false
+                dragStart, startPos = input.Position, menuBtn.Position
+                input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        if not moved then toggleWindow() end
+                    end
+                end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType == Enum.UserInputType.MouseMovement
+                or input.UserInputType == Enum.UserInputType.Touch then
+                local delta = input.Position - dragStart
+                if delta.Magnitude > 8 then moved = true end
+                if moved then
+                    menuBtn.Position = UDim2.new(
+                        startPos.X.Scale, startPos.X.Offset + delta.X,
+                        startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                end
+            end
+        end)
+    end)
+    if not okMenu then warn("[ItemSystem] สร้างปุ่มเมนูลอยไม่สำเร็จ") end
+
+    local Sec = newSection(Tabs.General, "ปุ่มเปิด/ปิดเมนู")
+    local Tg = Sec:AddToggle("MenuButton", {
+        Title = "แสดงปุ่มเมนูลอยบนหน้าจอ",
+        Description = "กดเพื่อซ่อน/แสดงหน้าต่างสคริปต์ ใช้บนมือถือได้ (ไม่ต้องใช้ RightControl) ลากย้ายตำแหน่งได้",
+        Default = true,
+    })
+    Tg:OnChanged(function()
+        if menuGui then menuGui.Enabled = Options.MenuButton.Value end
+    end)
+
+    function Ext.menuCleanup()
+        if menuGui then
+            menuGui:Destroy()
+            menuGui = nil
+        end
+    end
+end
+
 -- ========== จำค่าอัตโนมัติ (บันทึกทุกครั้งที่เปลี่ยน / โหลดให้เองตอนเข้าเกมใหม่) ==========
 do
     local AUTO_NAME = "autosave"
@@ -2866,6 +2962,7 @@ task.spawn(function()
     State.InfStamina = false
     pcall(restoreGuns)
     pcall(Ext.burrowCleanup)
+    pcall(Ext.menuCleanup)
     pcall(clearAllPlayerESP)
     pcall(stopVacuum)
     pcall(clearAllESP)
